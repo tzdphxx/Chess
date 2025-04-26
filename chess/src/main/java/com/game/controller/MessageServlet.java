@@ -19,6 +19,7 @@ import java.util.List;
 public class MessageServlet extends BaseServlet{
     private static MessageService messageService = new MessageServiceImpl();
 
+    //发送消息
     public void sendMessages(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException {
         // 读取请求体中的JSON数据
         StringBuilder sb = new StringBuilder();
@@ -39,6 +40,8 @@ public class MessageServlet extends BaseServlet{
         resp.setContentType("application/json;charset=utf-8");
         resp.getWriter().write(response);
     }
+
+    //获取消息
     public void getMessages(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         int senderId = Integer.parseInt(req.getParameter("senderId"));
         int receiverId = Integer.parseInt(req.getParameter("receiverId"));

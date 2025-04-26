@@ -20,6 +20,8 @@ public class GameMessage {
     private String senderName;
     private String gameId;
     private String roomId;
+    private int[][] board; // 新增：用于同步棋盘
+    private boolean gameStarted; // 新增：用于同步游戏状态
 
 
     public GameMessage(String type, String message) {
@@ -346,6 +348,20 @@ public class GameMessage {
      */
     public void setRoomId(String roomId) {
         this.roomId = roomId;
+    }
+
+    public int[][] getBoard() {
+        return board;
+    }
+    public void setBoard(int[][] board) {
+        this.board = board;
+    }
+
+    public boolean isGameStarted() {
+        return gameStarted;
+    }
+    public void setGameStarted(boolean gameStarted) {
+        this.gameStarted = gameStarted;
     }
 
     public String toString() {

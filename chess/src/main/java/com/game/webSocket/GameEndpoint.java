@@ -44,6 +44,22 @@ public class GameEndpoint {
             });
 
             System.out.println("玩家" + userId + "加入房间" + roomId);
+
+            // 检查是否断线重连
+            if (gameRoom.isPlayerDisconnected(userId)) {
+                gameRoom.addPlayer(userId, session);
+                // 广播重连成功
+                GameMessage reconnectMsg = new GameMessage();
+                reconnectMsg.setType("RECONNECT_SUCCESS");
+                reconnectMsg.setMessage("玩家" + userId + "重连成功，游戏继续");
+                gameRoom.broadcast(reconnectMsg);
+
+                // 广播当前棋盘和状态给所有玩家
+                broadcastSyncState();
+
+                return;
+            }
+
             gameRoom.addPlayer(userId, session);
 
             // 发送欢迎消息
@@ -52,6 +68,9 @@ public class GameEndpoint {
             welcomeMsg.setMessage("欢迎加入房间 " + roomId);
             welcomeMsg.setRoomId(roomId);
             session.getBasicRemote().sendText(welcomeMsg.toJson());
+
+            // 新玩家加入时也广播棋盘
+            broadcastSyncState();
         } catch (Exception e) {
             System.err.println("处理WebSocket连接时出错: " + e.getMessage());
             if (session.isOpen()) {
@@ -75,7 +94,7 @@ public class GameEndpoint {
 
 
             if ("START_GAME".equals(type)) {
-                if (gameRoom.canStartGame()) { // 检查是否满足开始条件
+                if (gameRoom.canStartGame()) {
                     gameRoom.startGame();
                     GameMessage startMessage = new GameMessage();
                     startMessage.setType("GAME_START");
@@ -96,7 +115,7 @@ public class GameEndpoint {
                     User sender = userMapper.selectById(Integer.parseInt(userId));
                     String senderName = sender != null ? sender.getUsername() : "未知玩家";
 
-                    // 保存到数据库
+
                     Message chatMsg = new Message();
                     chatMsg.setSenderId(Integer.parseInt(userId));
                     chatMsg.setReceiverId(-1); // -1表示房间广播
@@ -179,6 +198,22 @@ public class GameEndpoint {
             System.err.println("发送消息时出错: " + e.getMessage());
             e.printStackTrace();
             throw e;
+        }
+    }
+
+    //广播棋盘和状态给所有玩家
+    private void broadcastSyncState() {
+        try {
+            GameMessage syncMsg = new GameMessage();
+            syncMsg.setType("SYNC_STATE");
+            syncMsg.setBoard(gameRoom.getBoardCopy());
+            syncMsg.setCurrentPlayerId(gameRoom.getCurrentPlayerId());
+            syncMsg.setBlackPlayerId(gameRoom.getBlackPlayerId());
+            syncMsg.setWhitePlayerId(gameRoom.getWhitePlayerId());
+            syncMsg.setGameStarted(gameRoom.isGameStarted());
+            gameRoom.broadcast(syncMsg);
+        } catch (Exception e) {
+            System.err.println("广播棋盘状态失败: " + e.getMessage());
         }
     }
 }

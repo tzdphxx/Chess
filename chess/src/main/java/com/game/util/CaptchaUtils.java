@@ -16,34 +16,34 @@ public class CaptchaUtils {
     private static final int WIDTH = 80;//图像宽度
     private static final int HEIGHT = 40;//图像高度
     private static final int LENGTH = 4;//验证码字符数量
-    private static final Random random = new Random();// 用于生成随机数，便于设置rgb参数
+    private static final Random random = new Random();// 用于生成随机数
 
     /**
      * 创建验证码图像并返回验证码上的文本
      *
-     * @param response HttpServletResponse, 用于输出图像到客户端
+     * @param response HttpServletResponse
      * @return 返回生成的验证码文本
      */
 
     public static String createCaptchaImage(HttpServletResponse response) {
-        // 创建BufferedImage对象，这是一个包含图像数据的缓冲区
+        // 创建BufferedImage对象
         BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_RGB);
-        // 获取Graphics2D对象，可以在图像上进行绘制
+        // 获取对象，在图像上进行绘制
         Graphics2D g = image.createGraphics();
 
         // 设置背景色为白色并填充整个图像区域
         g.setColor(Color.WHITE);
         g.fillRect(0, 0, WIDTH, HEIGHT);
 
-        // 设置字体，使用Arial字体，加粗，大小20
+        // 设置字体
         g.setFont(new Font("Arial", Font.BOLD, 20));
 
-        // 随机生成验证码文本字符
+        // 随机生成验证码
         String captchaText = generateRandomText(LENGTH);
         int x = 10; // 横坐标开始位置
-        // 逐个绘制验证码中的字符
+
         for (char c : captchaText.toCharArray()) {
-            // 随机生成字符颜色(rgb)
+            // 随机生成字符颜色
             g.setColor(new Color(random.nextInt(255), random.nextInt(255), random.nextInt(255)));
             // 绘制字符，并随机调整字符的垂直位置
             g.drawString(String.valueOf(c), x, 20 + random.nextInt(20));
@@ -60,7 +60,7 @@ public class CaptchaUtils {
             g.drawLine(x1, y1, x1 + x2, y1 + y2);// 绘制一条小线段，代表噪点
         }
 
-        // 完成图像的绘制，释放图形上下文使用的系统资源
+        // 完成图像的绘制，释放资源
         g.dispose();
 
         // 设置响应内容类型为JPEG图像

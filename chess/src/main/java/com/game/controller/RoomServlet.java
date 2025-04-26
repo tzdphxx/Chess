@@ -21,6 +21,8 @@ public class RoomServlet extends BaseServlet {
 
     private static RoomService roomService = new RoomServiceImpl();
 
+
+    //创建房间
     public void create(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         resp.setContentType("application/json;charset=utf-8");
         try {
@@ -67,6 +69,8 @@ public class RoomServlet extends BaseServlet {
         }
     }
 
+
+    //加入房间
     public void joinRoom(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         String roomId = req.getParameter("roomId");
         String password = req.getParameter("password");

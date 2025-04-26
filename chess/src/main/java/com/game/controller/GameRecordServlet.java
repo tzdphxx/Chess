@@ -23,6 +23,7 @@ public class GameRecordServlet extends BaseServlet{
     private static GameRecordService gameRecordService = new GameRecordServiceImpl();
 
 
+    //记录对局
     public void gameOver(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException {
         req.setCharacterEncoding("utf-8");
         resp.setContentType("application/json;charset=UTF-8");
@@ -58,6 +59,8 @@ public class GameRecordServlet extends BaseServlet{
         }
     }
 
+
+    //查看对局
     public void getGameRecordByUserId(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         resp.setContentType("application/json;charset=UTF-8");
         resp.setCharacterEncoding("UTF-8");

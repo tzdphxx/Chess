@@ -6,6 +6,7 @@ import com.game.model.User;
 import com.game.service.UserService;
 import com.game.service.Impl.UserServiceImpl;
 import com.game.util.CaptchaUtils;
+import com.game.util.OperationLogger;
 import com.game.util.PasswordUtil;
 import com.mysql.cj.protocol.x.XMessage;
 import jakarta.servlet.annotation.WebServlet;
@@ -28,6 +29,8 @@ public class UserServlet extends BaseServlet{
 
     Random random = new Random();
 
+
+    //登录
     public void login (HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
 
         String username = req.getParameter("username");
@@ -49,12 +52,16 @@ public class UserServlet extends BaseServlet{
         if (user == null){
             message = "null";
             extracted(resp, message);
+            // 记录失败日志
+            OperationLogger.log(username, "LOGIN_FAIL", "用户名不存在", req.getRemoteAddr());
             return;
         }
         if (!PasswordUtil.checkPassword(password, user.getPassword())){
 
             message = "null";
             extracted(resp, message);
+            // 记录失败日志
+            OperationLogger.log(username, "LOGIN_FAIL", "密码错误", req.getRemoteAddr());
             return;
         }
 
@@ -64,6 +71,8 @@ public class UserServlet extends BaseServlet{
         message = "success";
         HttpSession session = req.getSession();
         session.setAttribute("user", user.getUsername());
+        // 记录成功日志
+        OperationLogger.log(username, "LOGIN_SUCCESS", "登录成功", req.getRemoteAddr());
 
 
         if ("true".equals(remember)) {
@@ -96,6 +105,7 @@ public class UserServlet extends BaseServlet{
     }
 
 
+    //注册
     public void register (HttpServletRequest req, HttpServletResponse resp) throws SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, UnsupportedEncodingException {
         req.setCharacterEncoding("UTF-8");
 
@@ -168,6 +178,7 @@ public class UserServlet extends BaseServlet{
         }
     }
 
+    //获取信息
     public void getUserInfo(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         HttpSession session = req.getSession(false);
 
@@ -193,13 +204,14 @@ public class UserServlet extends BaseServlet{
         resp.getWriter().write(JSON.toJSONString(user));
     }
 
+    //用户胜利
     public void userWin(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException {
         String userId = req.getParameter("userId");
         if (userId == null || userId.trim().isEmpty()){
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST,"userId不能为空");
             return;
         }
-        int eloChange = random.nextInt(10) + 1;
+        int eloChange = random.nextInt(100) + 1;
 
         int j = userService.updateEloScore(Integer.parseInt(userId),eloChange);
 
@@ -210,6 +222,8 @@ public class UserServlet extends BaseServlet{
             extracted(resp, "error");
         }
     }
+
+    //失败
     public void userLose(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException {
         String userId = req.getParameter("userId");
         if (userId == null || userId.trim().isEmpty()){
@@ -217,7 +231,7 @@ public class UserServlet extends BaseServlet{
             return;
         }
 
-        int eloChange = random.nextInt(10) + 1;
+        int eloChange = random.nextInt(50) + 1;
         eloChange = eloChange * -1;
 
         int j = userService.updateEloScore(Integer.parseInt(userId),eloChange);
@@ -228,6 +242,8 @@ public class UserServlet extends BaseServlet{
             extracted(resp, "error");
         }
     }
+
+    //按分数获取用户列表
     public void getEloList(HttpServletRequest req, HttpServletResponse resp) throws SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException, IOException {
 
        List<User> users = userService.selectByElo();
@@ -237,6 +253,8 @@ public class UserServlet extends BaseServlet{
 
     }
 
+
+    //获取验证码
     public void getCaptcha(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         String captcha = CaptchaUtils.createCaptchaImage(resp);
         HttpSession session = req.getSession();

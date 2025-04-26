@@ -24,6 +24,7 @@ public class GameHallServlet extends BaseServlet{
     private static final MatchService matchService = MatchServiceImpl.getInstance();
 
 
+    //获取用户消息
     public void getUserInfo(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         HttpSession session = req.getSession(false);
         if (session==null || session.getAttribute("user")==null){
@@ -52,6 +53,8 @@ public class GameHallServlet extends BaseServlet{
 
     }
 
+
+    //开始匹配
     public void startMatch(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         HttpSession session = req.getSession(false);
         if (session==null || session.getAttribute("user")==null){
@@ -74,6 +77,8 @@ public class GameHallServlet extends BaseServlet{
         resp.setContentType("application/json;charset=utf-8");
         resp.getWriter().write(JSON.toJSONString(response));
     }
+
+    //取消匹配
     public void cancelMatch(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         HttpSession session = req.getSession(false);
 

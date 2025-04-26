@@ -15,8 +15,11 @@ public class GameRoom {
     private boolean gameStarted = false;
     private String blackPlayerId;
     private String whitePlayerId;
-    private Timer moveTimer; // 添加计时器
+    private Timer moveTimer; // 计时器
+    private final Map<String, Long> disconnectedPlayers = new ConcurrentHashMap<>(); // 记录掉线玩家及重连截止时间
+
     private static final int MOVE_TIMEOUT = 60000; // 60秒超时
+    private static final int RECONNECT_TIMEOUT = 60000; // 60秒重连时间限制
 
 
     public GameRoom(String roomId) {
@@ -46,6 +49,19 @@ public class GameRoom {
             players.put(playerId, session);
             System.out.println("玩家" + playerId + "成功加入房间" + roomId + "，当前玩家数：" + players.size());
             broadcastPlayerList();
+
+            // 如果玩家断线重连
+            if (disconnectedPlayers.containsKey(playerId)) {
+                disconnectedPlayers.remove(playerId);
+                players.put(playerId, session);
+                System.out.println("玩家" + playerId + "断线重连成功");
+                if (disconnectedPlayers.isEmpty() && gameStarted) {
+                    // 所有人都在线，恢复游戏
+                    broadcast(new GameMessage("RECONNECT_SUCCESS", "玩家" + playerId + "已重连，游戏继续"));
+                    startMoveTimer();
+                }
+                return;
+            }
         } catch (Exception e) {
             System.err.println("添加玩家时出错: " + e.getMessage());
             e.printStackTrace();
@@ -66,6 +82,19 @@ public class GameRoom {
             }
 
             if (gameStarted) {
+                // 断线等待重连
+                long deadline = System.currentTimeMillis() + RECONNECT_TIMEOUT;
+                disconnectedPlayers.put(playerId, deadline);
+                broadcast(new GameMessage("WAIT_RECONNECT", "玩家" + playerId + "掉线，等待重连..."));
+                pauseGameForReconnect();
+                // 启动定时任务检测重连超时
+                new Timer(true).schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        checkReconnectTimeout(playerId);
+                    }
+                }, RECONNECT_TIMEOUT + 1000);
+            } else {
                 broadcast(new GameMessage("OPPONENT_LEFT", "对手已离开"));
             }
             broadcastPlayerList();
@@ -75,12 +104,54 @@ public class GameRoom {
         }
     }
 
+    private void pauseGameForReconnect() {
+        if (moveTimer != null) {
+            moveTimer.cancel();
+            moveTimer = null;
+        }
+        // 游戏暂停，等待重连
+    }
+
+    private void checkReconnectTimeout(String playerId) {
+        Long deadline = disconnectedPlayers.get(playerId);
+        if (deadline != null && System.currentTimeMillis() > deadline) {
+            // 超时未重连，判平局，掉线方扣分
+            disconnectedPlayers.remove(playerId);
+            gameStarted = false;
+            if (moveTimer != null) {
+                moveTimer.cancel();
+                moveTimer = null;
+            }
+            GameMessage drawMsg = new GameMessage();
+            drawMsg.setType("GAME_OVER");
+            drawMsg.setWinner(null); // 平局
+            drawMsg.setMessage("玩家" + playerId + "超时未重连，判平局，掉线方扣分");
+            broadcast(drawMsg);
+            saveGameRecordOnDisconnect(playerId);
+            // TODO: 调用用户扣分逻辑（如UserService.updateEloScore(playerId, -50);）
+        }
+    }
+
+    private void saveGameRecordOnDisconnect(String disconnectedPlayerId) {
+        // TODO: 实现自动保存对局记录到数据库
+        // 可调用GameRecordServlet或GameRecordService
+        System.out.println("自动保存对局，掉线玩家: " + disconnectedPlayerId);
+    }
+
+    public boolean isPlayerDisconnected(String playerId) {
+        return disconnectedPlayers.containsKey(playerId);
+    }
+
+    public boolean isAnyPlayerDisconnected() {
+        return !disconnectedPlayers.isEmpty();
+    }
+
     public boolean isEmpty() {
         return players.isEmpty();
     }
 
     public boolean canStartGame() {
-        return players.size() == 2 && !gameStarted; // 修正逻辑：两名玩家且游戏未开始
+        return players.size() == 2 && !gameStarted; // 两名玩家且游戏未开始
     }
 
     public void startGame() {
@@ -135,12 +206,27 @@ public class GameRoom {
     }
 
     public void makeMove(String playerId, int x, int y) {
+        // 禁止在等待重连时下棋
+        if (isAnyPlayerDisconnected()) {
+            System.out.println("有玩家掉线，暂停下棋");
+            return;
+        }
         if (!gameStarted || !playerId.equals(currentPlayerId)) return;
         if (x < 0 || x >= 15 || y < 0 || y >= 15 || board[x][y] != 0) return;
 
         int pieceValue = playerId.equals(blackPlayerId) ? 1 : 2;
         board[x][y] = pieceValue;
 
+        // 三三禁手检测（仅黑子）
+        if (pieceValue == 1 && isDoubleThree(x, y, 1)) {
+            // 禁手，判负
+            gameOver(getOpponentId(playerId));
+            GameMessage forbiddenMsg = new GameMessage();
+            forbiddenMsg.setType("FORBIDDEN");
+            forbiddenMsg.setMessage("黑方三三禁手，判负！");
+            broadcast(forbiddenMsg);
+            return;
+        }
 
         GameMessage message = new GameMessage();
         message.setType("MOVE");
@@ -208,6 +294,48 @@ public class GameRoom {
         return false;
     }
 
+    // 检查是否三三禁手（仅黑子，返回true表示禁手）
+    private boolean isDoubleThree(int x, int y, int color) {
+        // 检查4个方向，统计活三数量
+        int liveThreeCount = 0;
+        int[][] dirs = {{1,0},{0,1},{1,1},{1,-1}};
+        for (int[] dir : dirs) {
+            if (isLiveThree(x, y, dir[0], dir[1], color)) liveThreeCount++;
+            if (liveThreeCount >= 2) return true;
+        }
+        return false;
+    }
+
+    // 检查(x,y)为中心，dir方向是否形成活三
+    private boolean isLiveThree(int x, int y, int dx, int dy, int color) {
+        // 以(x,y)为中心，取7个点的序列
+        int[] line = new int[7];
+        for (int i = -3; i <= 3; i++) {
+            int nx = x + dx * i;
+            int ny = y + dy * i;
+            if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) {
+                line[i + 3] = -1; // 边界外
+            } else if (nx == x && ny == y) {
+                line[i + 3] = color; // 当前落子
+            } else {
+                line[i + 3] = board[nx][ny];
+            }
+        }
+        // 检查是否有活三模式（0空，1黑，2白，-1边界）
+        for (int i = 0; i <= 2; i++) {
+            if (line[i] == 0 && line[i+1] == color && line[i+2] == color && line[i+3] == color && line[i+4] == 0) {
+                // 检查两端都为空且不是被堵死
+                if (line[i] == 0 && line[i+4] == 0) {
+                    // 还需排除四连和五连（只允许正好三个）
+                    if ((i == 0 || line[i-1] != color) && (i+5 == 7 || line[i+5] != color)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private String getOpponentId(String playerId) {
         for (String id : players.keySet()) {
             if (!id.equals(playerId)) return id;
@@ -228,7 +356,7 @@ public class GameRoom {
 
         System.out.println("广播消息: type=" + message.getType() + ", roomId=" + roomId);
 
-        // 创建��移除的无效会话列表
+        // 移除的无效会话列表
         List<String> invalidPlayers = new ArrayList<>();
 
         for (Map.Entry<String, Session> entry : players.entrySet()) {
@@ -270,5 +398,16 @@ public class GameRoom {
         }
     }
 
+    // 新增：获取棋盘副本用于同步
+    public int[][] getBoardCopy() {
+        int[][] copy = new int[15][15];
+        for (int i = 0; i < 15; i++) {
+            System.arraycopy(board[i], 0, copy[i], 0, 15);
+        }
+        return copy;
+    }
 
+    public boolean isGameStarted() {
+        return gameStarted;
+    }
 }

@@ -28,6 +28,7 @@ public class FriendServlet extends BaseServlet{
 
 
 
+    //申请好友
     public void requestShip(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException {
         String userId = req.getParameter("userId");
         String objectId = req.getParameter("objectId");
@@ -58,6 +59,7 @@ public class FriendServlet extends BaseServlet{
     }
 
 
+    //接受请求
     public void accept(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException {
 
         String friendId = req.getParameter("friendId");
@@ -87,6 +89,7 @@ public class FriendServlet extends BaseServlet{
         resp.getWriter().write(message);
     }
 
+    //拒绝好友
     public void reject(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException {
         String friendId = req.getParameter("friendId");
         String userId = req.getParameter("userId");
@@ -106,6 +109,7 @@ public class FriendServlet extends BaseServlet{
         resp.getWriter().write(message);
     }
 
+    //删除好友
     public void removed(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException {
         String friendId = req.getParameter("friendId");
         String userId = req.getParameter("userId");
@@ -132,6 +136,8 @@ public class FriendServlet extends BaseServlet{
         resp.getWriter().write(message);
     }
 
+
+    //查看好友列表
     public void selectFriend(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         HttpSession session = req.getSession(false);
 
@@ -188,6 +194,8 @@ public class FriendServlet extends BaseServlet{
         resp.getWriter().write(JSON.toJSONString(users));
     }
 
+
+    //搜索用户
     public void search(HttpServletRequest req, HttpServletResponse resp) throws IOException, SQLException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         String username = req.getParameter("username");
         if (username == null || username.trim().isEmpty()) {
@@ -201,6 +209,8 @@ public class FriendServlet extends BaseServlet{
         resp.getWriter().write(JSON.toJSONString(users));
     }
 
+
+    //查看好友请求
     public void friendRequest(HttpServletRequest req, HttpServletResponse resp) throws SQLException, IOException, NoSuchFieldException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         HttpSession session = req.getSession(false);
 

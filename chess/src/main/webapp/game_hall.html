@@ -301,19 +301,41 @@
             </template>
         </el-dialog>
     </el-container>
+    <!-- 全局聊天频道和在线人数统计 -->
+    <div style="position:fixed;right:30px;bottom:30px;width:350px;z-index:999;">
+        <el-card>
+            <div slot="header" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>全局聊天频道</span>
+                <el-tag type="success" size="small">在线人数: {{ onlineCount }}</el-tag>
+            </div>
+            <div style="height:180px;overflow-y:auto;margin-bottom:10px;" ref="chatScroll">
+                <div v-for="(msg, idx) in hallChatMessages" :key="idx" style="margin:4px 0;">
+                    <b style="color:#409EFF">{{ msg.sender }}</b>：{{ msg.content }}
+                </div>
+            </div>
+            <el-input
+                    v-model="hallChatInput"
+                    placeholder="输入内容回车发送"
+                    size="small"
+                    @keyup.enter.native="sendHallChat"
+            >
+                <template #append>
+                    <el-button @click="sendHallChat" type="primary" size="small">发送</el-button>
+                </template>
+            </el-input>
+        </el-card>
+    </div>
 </div>
 <script>
     const { createApp, ref, onMounted ,reactive } = Vue;
 
     createApp({
         setup() {
-            // 添加joinRoomForm的响应式定义
             const joinRoomForm = reactive({
                 roomId: '',
                 password: ''
             });
 
-            // 添加在setup函数开始处
             const createRoomForm = reactive({
                 roomName: '',
                 isPublic: true,
@@ -341,7 +363,7 @@
             // 数据列表
             const onlineUsers = ref([]);
             const gameHistory = ref([]);
-            const userList = ref([]);  // 修改这里，使用空数组初始化
+            const userList = ref([]);
 
             // 加载状态
             const userListLoading = ref(false);
@@ -350,6 +372,13 @@
             // 当前选中的游戏
             const currentGame = ref(null);
             const selectedGame = ref(null);
+
+            // 全局聊天频道相关
+            const hallChatInput = ref('');
+            const hallChatMessages = ref([]);
+            const onlineCount = ref(0);
+            let hallChatWs = null;
+            const chatScroll = ref(null);
 
             const fetchUserInfo = async () => {
                 try {
@@ -419,6 +448,49 @@
                     console.error('连接WebSocket失败:', error);
                     window.location.href = '/chess_war/login.html';
                 }
+            };
+
+            // 全局聊天频道WebSocket连接
+            const connectHallChat = () => {
+                const wsUrl = `ws://${window.location.host}/chess_war/hallChat`;
+                hallChatWs = new WebSocket(wsUrl);
+
+                hallChatWs.onopen = () => {
+                    // 发送上线通知
+                };
+
+                hallChatWs.onmessage = (event) => {
+                    let msg;
+                    try {
+                        msg = JSON.parse(event.data);
+                    } catch {
+                        return;
+                    }
+                    if (msg.type === 'CHAT') {
+                        hallChatMessages.value.push({
+                            sender: msg.sender,
+                            content: msg.content
+                        });
+                        // 滚动到底部
+                        setTimeout(() => {
+                            if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight;
+                        }, 0);
+                    } else if (msg.type === 'ONLINE_COUNT') {
+                        onlineCount.value = msg.count;
+                    }
+                };
+                hallChatWs.onclose = () => {};
+                hallChatWs.onerror = () => {};
+            };
+
+            const sendHallChat = () => {
+                if (!hallChatInput.value.trim() || !hallChatWs || hallChatWs.readyState !== 1) return;
+                hallChatWs.send(JSON.stringify({
+                    type: 'CHAT',
+                    sender: username.value,
+                    content: hallChatInput.value.trim()
+                }));
+                hallChatInput.value = '';
             };
 
             const toggleMatch = async () => {
@@ -551,7 +623,7 @@
                     }
                 }
 
-                // 解析并放置棋子及序号
+                // 放置棋子及序号
                 if (record.moveHistory) {
                     try {
                         let moves;
@@ -572,7 +644,7 @@
                                 const piece = document.createElement('div');
                                 piece.className = `piece ${index % 2 === 0 ? 'black' : 'white'}`;
 
-                                // 创建并添加序号元素
+                                // 添加序号元素
                                 const moveNumberSpan = document.createElement('span');
                                 moveNumberSpan.className = 'move-number';
                                 moveNumberSpan.textContent = index + 1; // 序号从1开始
@@ -608,7 +680,7 @@
                             userId: user.userId
                         }));
                         console.log('处理后的用户列表:', processedData);
-                        userList.value = processedData;  // 直接赋值给ref
+                        userList.value = processedData;
                     } else {
                         console.error('数据格式不正确:', response.data);
                         userList.value = [];
@@ -674,13 +746,12 @@
             };
 
             const invitePlayer = (player) => {
-                // 实现邀请逻辑
+                // 邀请
             };
 
             const viewGameDetail = (game) => {
                 selectedGame.value = game;
                 showGameDetailModal.value = true;
-                // 延迟渲染棋盘，确保DOM已更新
                 setTimeout(() => {
                     renderGameBoard(game);
                 }, 100);
@@ -721,16 +792,15 @@
 
                 showJoinRoomDialog.value = true;
             }
-            const showJoinRoomDialog = ref(false);  // 添加状态变量
+            const showJoinRoomDialog = ref(false);
 
-            // 添加关闭对话框的方法
+            // 关闭对话框
             const closeJoinRoomDialog = () => {
                 showJoinRoomDialog.value = false;
             }
 
             const joinRoom = async () => {
                 try {
-                    // 创建URLSearchParams对象来构建查询参数
                     const params = new URLSearchParams();
                     params.append('roomId', joinRoomForm.roomId);
                     params.append('password', joinRoomForm.password);
@@ -758,6 +828,7 @@
             onMounted(async () => {
                 console.log('页面加载完成，开始初始化...');
                 await connectWebSocket();
+                connectHallChat();
             });
 
             const goToUserPage = () => {
@@ -776,27 +847,27 @@
                 statusMessage,
                 loading,
 
-                // 对话框状态
+
                 showUserList,
                 showHistory,
                 showGameDetailModal,
                 showCreateRoomDialog,
-                showJoinRoomDialog, // 确保返回
+                showJoinRoomDialog,
 
-                // 数据列表
+
                 onlineUsers,
                 gameHistory,
                 userList,
 
-                // 加载状态
+
                 userListLoading,
                 historyLoading,
 
-                // 当前游戏
+
                 currentGame,
                 selectedGame,
 
-                // 方法
+
                 toggleHistory,
                 startMatch,
                 cancelMatch,
@@ -817,6 +888,12 @@
                 createRoomForm,
                 joinRoomForm,
 
+
+                hallChatInput,
+                hallChatMessages,
+                sendHallChat,
+                onlineCount,
+                chatScroll,
                 goToUserPage,
             };
         }

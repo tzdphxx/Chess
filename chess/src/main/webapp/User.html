@@ -61,7 +61,7 @@
         </div>
         <div>
           <h3>{{ user.name }}</h3>
-          <p>等级: {{ user.level }}</p>
+          <p>等级: {{ userLevel }}</p>
           <p>积分: {{ user.score }}</p>
         </div>
         <el-button type="primary" @click="goToGameHall">进入游戏大厅</el-button>
@@ -180,9 +180,9 @@
   </el-dialog>
 </div>
 
-<!-- 将脚本移到这里 -->
+
 <script>
-  const { createApp, ref, reactive, onMounted } = Vue;
+  const { createApp, ref, reactive, onMounted, computed } = Vue;
 
   createApp({
     setup() {
@@ -284,7 +284,7 @@
           if (response.data) {
             const userData = response.data;
             user.name = userData.username;
-            user.id = userData.userId;  // 保存userId
+            user.id = userData.userId;
             user.level = userData.level || 1;
             user.score = userData.eloScore;
             console.log('用户信息加载成功:', userData);
@@ -371,7 +371,6 @@
             params: { userId: user.id }
           });
           if (response.data && Array.isArray(response.data)) {
-            // 将后端返回的数据映射为前端需要的格式
             const mappedFriends = response.data.map(friend => ({
               id: friend.userId,
               name: friend.username,
@@ -452,6 +451,13 @@
         showAddFriendDialog.value = true;
         console.log("点击了按钮");
       }
+
+      // 计算等级：每1000分升一级，最低为1级
+      const userLevel = computed(() => {
+        if (!user.score || isNaN(user.score)) return 1;
+        return Math.max(1, Math.floor(user.score / 1000) + 1);
+      });
+
       return {
         user,
         friends,
@@ -476,6 +482,7 @@
         friendRequests,
         showFriendRequestsDialog,
         fetchFriendRequests,
+        userLevel,
       };
     }
   }).use(ElementPlus).mount('#app');

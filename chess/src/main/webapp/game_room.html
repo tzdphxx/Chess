@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>五子棋对战房间</title>
-  <!-- 引入 Element UI 样式 -->
+
   <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script src="https://unpkg.com/vue@2.6.14/dist/vue.js"></script>
@@ -153,15 +153,18 @@
                 :closable="false"
                 show-icon
         ></el-alert>
+        <div v-if="waitingReconnect" style="color:#f56c6c;margin:10px 0;">
+          有玩家掉线，等待重连中...（剩余{{ reconnectCountdown }}秒）
+        </div>
         <div class="controls" style="margin-top: 15px;">
           <el-button
                   type="primary"
-                  :disabled="!canStartGame"
+                  :disabled="!canStartGame || waitingReconnect"
                   @click="startGame"
           >开始游戏</el-button>
           <el-button
                   type="danger"
-                  :disabled="!gameStarted"
+                  :disabled="!gameStarted || waitingReconnect"
                   @click="surrender"
           >认输</el-button>
           <el-button @click="leaveRoom">离开房间</el-button>
@@ -226,6 +229,9 @@
         moveHistory: [],
         timer: null,
         remainingTime: 60,
+        waitingReconnect: false,
+        reconnectCountdown: 60,
+        reconnectTimer: null,
       }
     },
     methods: {
@@ -289,8 +295,42 @@
           case 'MOVE':
             this.handleMove(message)
             break
+          case 'WAIT_RECONNECT':
+            this.waitingReconnect = true;
+            this.statusMessage = message.message || '有玩家掉线，等待重连...';
+            this.alertType = 'warning';
+            this.startReconnectCountdown();
+            break;
+          case 'RECONNECT_SUCCESS':
+            this.waitingReconnect = false;
+            this.statusMessage = message.message || '玩家已重连，游戏继续';
+            this.alertType = 'success';
+            this.stopReconnectCountdown();
+            break;
           case 'GAME_OVER':
-            this.handleGameOver(message)
+            this.gameStarted = false;
+            if (message.winner == null) {
+              this.statusMessage = message.message || '对局平局，掉线方扣分';
+              this.alertType = 'warning';
+              this.$message.warning(this.statusMessage);
+            } else {
+              this.gameStatus = message.winner === this.userId ? '你赢了！' : '你输了！';
+              this.statusMessage = `游戏结束，${message.winner === this.userId ? '获胜！' : '失败！'}`;
+              this.alertType = message.winner === this.userId ? 'success' : 'error';
+              this.$message({
+                message: this.statusMessage,
+                type: this.alertType,
+                duration: 3000
+              });
+            }
+            this.stopReconnectCountdown();
+            if (this.blackPlayerId === this.userId) {
+              this.saveGameRecord(message.winner)
+            }
+            if (this.timer) {
+              clearInterval(this.timer);
+              this.timer = null;
+            }
             break
           case 'CHAT':
             this.handleChat(message)
@@ -301,6 +341,19 @@
           case 'PLAYER_LIST':
             this.handlePlayerList(message)
             break
+          case 'SYNC_STATE':
+            // 同步棋盘和状态
+            if (message.board) {
+              // 赋值副本，避免响应式丢失
+              this.boardState = message.board.map(row => row.slice());
+            }
+            if (message.currentPlayerId) {
+              this.currentTurn = message.currentPlayerId === this.userId ? '你的回合' : '对手回合';
+            }
+            if (message.blackPlayerId) this.blackPlayerId = message.blackPlayerId;
+            if (message.whitePlayerId) this.whitePlayerId = message.whitePlayerId;
+            if (typeof message.gameStarted === 'boolean') this.gameStarted = message.gameStarted;
+            break;
         }
       },
       handleGameStart(message) {
@@ -312,7 +365,6 @@
         this.whitePlayerId = message.whitePlayerId
         this.opponentPlayer = message.opponentName
         this.gameStatus = '游戏中'
-        // 修改回合显示逻辑
         this.currentTurn = this.userId === message.currentPlayerId ? '你的回合' : '对手回合'
         this.startTimer();
       },
@@ -323,7 +375,6 @@
           y: message.y,
           player: message.pieceValue
         })
-        // 修改回合显示逻辑
         this.currentTurn = message.currentPlayerId === this.userId ? '你的回合' : '对手回合'
         this.resetTimer();
       },
@@ -343,24 +394,6 @@
       },
       resetTimer() {
         this.remainingTime = 60;
-      },
-      handleGameOver(message) {
-        this.gameStarted = false
-        this.gameStatus = message.winner === this.userId ? '你赢了！' : '你输了！'
-        this.$message({
-          message: `游戏结束，${message.winner === this.userId ? '获胜！' : '失败！'}`,
-          type: message.winner === this.userId ? 'success' : 'error',
-          duration: 3000
-        })
-
-        if (this.blackPlayerId === this.userId) {
-          this.saveGameRecord(message.winner)
-        }
-
-        if (this.timer) {
-          clearInterval(this.timer);
-          this.timer = null;
-        }
       },
       async saveGameRecord(winnerId) {
         try {
@@ -399,7 +432,7 @@
       },
       handlePlayerList(message) {
         const players = message.message.replace("玩家列表:", "").split(",");
-        this.canStartGame = players.length === 2 && !this.gameStarted; // 修正逻辑
+        this.canStartGame = players.length === 2 && !this.gameStarted;
 
         const opponent = players.find(id => id !== this.userId);
         this.opponentPlayer = opponent ? `玩家${opponent}` : '等待对手...';
@@ -437,7 +470,22 @@
         }
         if (this.ws) this.ws.close()
         window.location.href = '/chess_war/game_hall.html'
-      }
+      },
+      startReconnectCountdown() {
+        this.reconnectCountdown = 60;
+        if (this.reconnectTimer) clearInterval(this.reconnectTimer);
+        this.reconnectTimer = setInterval(() => {
+          if (this.reconnectCountdown > 0) {
+            this.reconnectCountdown--;
+          }
+        }, 1000);
+      },
+      stopReconnectCountdown() {
+        if (this.reconnectTimer) {
+          clearInterval(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+      },
     },
     mounted() {
       this.roomId = this.getUrlParameter('roomId')
