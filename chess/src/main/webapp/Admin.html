@@ -15,6 +15,37 @@
     .section-title { font-size: 20px; margin-bottom: 10px; color: #409EFF; }
     .msg-box { display: flex; gap: 10px; margin-top: 10px; }
     .msg-box .el-input { flex: 1; }
+    .chess-board { display: flex; justify-content: center; }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(15, 1fr);
+      grid-template-rows: repeat(15, 1fr);
+      width: 450px;
+      height: 450px;
+      background-color: #DCB35C;
+    }
+    .cell {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border: 1px solid #866a2a;
+      position: relative;
+    }
+    .piece {
+      width: 80%;
+      height: 80%;
+      position: absolute;
+    }
+    .black {
+      background: black;
+      border-radius: 50%;
+    }
+    .white {
+      background: white;
+      border-radius: 50%;
+      border: 1px solid #333;
+      box-shadow: 0 0 2px rgba(0,0,0,0.5);
+    }
   </style>
 </head>
 <body>
@@ -69,6 +100,11 @@
           {{ scope.row.winnerId }}
         </template>
       </el-table-column>
+      <el-table-column label="操作" width="150">
+        <template #default="scope">
+          <el-button type="primary" size="small" @click="viewGameDetail(scope.row)">查看对局</el-button>
+        </template>
+      </el-table-column>
     </el-table>
   </el-card>
 
@@ -84,14 +120,29 @@
       </el-select>
     </div>
     <div class="msg-box">
-      <el-input v-model="msgContent" placeholder="输入消息内容" @keyup.enter="sendMsg"/>
-      <el-button type="primary" @click="sendMsg">发送</el-button>
+      <el-input v-model="msgContent" placeholder="输入消息内容" @keyup.enter="sendMsg">
+        <template #append>
+          <el-button type="primary" @click="sendMsg">发送</el-button>
+        </template>
+      </el-input>
     </div>
     <div style="margin-top:10px;"></div>
     <el-tag v-for="(msg,idx) in msgHistory" :key="idx" style="margin:2px;">
       {{ msg }}
     </el-tag>
-</el-card>
+
+  </el-card>
+
+  <el-dialog
+          v-model="showGameDetailModal"
+          title="对局回放"
+          width="700px">
+    <div v-if="selectedGame" style="text-align: center;">
+      <div class="chess-board">
+        <div class="board" id="gameDetailBoard"></div>
+      </div>
+    </div>
+  </el-dialog>
 </div>
 <script>
   const { createApp, ref, onMounted } = Vue;
@@ -104,6 +155,8 @@
       const selectedUserId = ref(null);
       const msgContent = ref('');
       const msgHistory = ref([]);
+      const selectedGame = ref(null);
+      const showGameDetailModal = ref(false);
 
       // 获取用户列表
       const fetchUsers = async () => {
@@ -119,9 +172,101 @@
       const fetchGames = async () => {
         try {
           const response = await axios.get('/chess_war/gameRecord/getAllRecords');
-          games.value = response.data || [];
+          if (response.data && Array.isArray(response.data)) {
+            games.value = response.data.map(record => ({
+              gameId: record.gameId,
+              blackPlayerId: record.blackPlayerId,
+              whitePlayerId: record.whitePlayerId,
+              winnerId: record.winnerId,
+              moveHistory: record.moveHistory || []
+            }));
+          } else {
+            games.value = [];
+          }
         } catch (error) {
           console.error('获取对局列表失败:', error);
+          games.value = [];
+        }
+      };
+
+      // 发送消息
+      const sendMsg = async () => {
+        if (!msgContent.value.trim()) return;
+
+        try {
+          let payload = {
+            type: msgType.value === 'broadcast' ? 'ADMIN_BROADCAST' : 'ADMIN_SINGLE',
+            content: msgContent.value
+          };
+          if (msgType.value === 'single' && selectedUserId.value) {
+            payload.targetUserId = selectedUserId.value;
+          }
+          await axios.post('/chess_war/admin/sendAdminMsg', payload);
+          if (msgType.value === 'broadcast') {
+            msgHistory.value.push(`广播: ${msgContent.value}`);
+          } else if (msgType.value === 'single' && selectedUserId.value) {
+            msgHistory.value.push(`对用户 ${selectedUserId.value}: ${msgContent.value}`);
+          }
+        } catch (error) {
+          console.error('发送消息失败:', error);
+          msgHistory.value.push(`发送失败: ${msgContent.value}`);
+        } finally {
+          msgContent.value = '';
+        }
+      };
+
+      const viewGameDetail = (game) => {
+        selectedGame.value = game;
+        showGameDetailModal.value = true;
+
+        setTimeout(() => {
+          renderGameBoard(game);
+        }, 100);
+      };
+
+      const renderGameBoard = (game) => {
+        const board = document.getElementById('gameDetailBoard');
+        if (!board) return;
+
+        board.innerHTML = '';
+
+        // 创建棋盘格子
+        for (let y = 0; y < 15; y++) {
+          for (let x = 0; x < 15; x++) {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+            cell.dataset.x = x;
+            cell.dataset.y = y;
+            board.appendChild(cell);
+          }
+        }
+
+        // 放置棋子
+        if (game.moveHistory) {
+          try {
+            let moves;
+            if (typeof game.moveHistory === 'string') {
+              moves = JSON.parse(game.moveHistory);
+            } else {
+              moves = game.moveHistory;
+            }
+
+            if (!Array.isArray(moves)) {
+              console.error('moves不是数组类型');
+              return;
+            }
+
+            moves.forEach((move, index) => {
+              const cell = board.querySelector(`.cell[data-x="${move.x}"][data-y="${move.y}"]`);
+              if (cell) {
+                const piece = document.createElement('div');
+                piece.className = `piece ${index % 2 === 0 ? 'black' : 'white'}`;
+                cell.appendChild(piece);
+              }
+            });
+          } catch (error) {
+            console.error('解析或渲染棋局历史失败:', error);
+          }
         }
       };
 
@@ -131,12 +276,12 @@
       });
 
       return {
-        users,
-        games,
-        msgType,
-        selectedUserId,
-        msgContent,
-        msgHistory,
+        users, games,
+        msgType, selectedUserId, msgContent, msgHistory,
+        selectedGame,
+        showGameDetailModal,
+        sendMsg,
+        viewGameDetail,
       };
     }
   }).use(ElementPlus).mount('#app');

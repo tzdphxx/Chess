@@ -312,6 +312,9 @@
                 <div v-for="(msg, idx) in hallChatMessages" :key="idx" style="margin:4px 0;">
                     <b style="color:#409EFF">{{ msg.sender }}</b>：{{ msg.content }}
                 </div>
+                <div v-for="(msg, idx) in adminMessages" :key="'admin-' + idx" style="margin:4px 0;color:red;">
+                    <b>管理员</b>：{{ msg.content }}
+                </div>
             </div>
             <el-input
                     v-model="hallChatInput"
@@ -364,6 +367,7 @@
             const onlineUsers = ref([]);
             const gameHistory = ref([]);
             const userList = ref([]);
+            const adminMessages = ref([]);
 
             // 加载状态
             const userListLoading = ref(false);
@@ -456,7 +460,10 @@
                 hallChatWs = new WebSocket(wsUrl);
 
                 hallChatWs.onopen = () => {
-                    // 发送上线通知
+                    // 绑定userId，便于后端单发
+                    if (userId.value) {
+                        hallChatWs.send(JSON.stringify({ type: "BIND_USER", userId: userId.value }));
+                    }
                 };
 
                 hallChatWs.onmessage = (event) => {
@@ -471,12 +478,15 @@
                             sender: msg.sender,
                             content: msg.content
                         });
-                        // 滚动到底部
                         setTimeout(() => {
                             if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight;
                         }, 0);
                     } else if (msg.type === 'ONLINE_COUNT') {
                         onlineCount.value = msg.count;
+                    } else if (msg.type === 'ADMIN_BROADCAST') {
+                        adminMessages.value.push({ content: `[管理员广播] ${msg.content}` });
+                    } else if (msg.type === 'ADMIN_SINGLE' && msg.targetUserId == userId.value) {
+                        adminMessages.value.push({ content: `[管理员消息] ${msg.content}` });
                     }
                 };
                 hallChatWs.onclose = () => {};
@@ -895,6 +905,8 @@
                 onlineCount,
                 chatScroll,
                 goToUserPage,
+
+                adminMessages,
             };
         }
     }).use(ElementPlus).mount('#app');
