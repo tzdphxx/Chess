@@ -9,8 +9,5 @@
         <module name="chess" />
       </profile>
     </annotationProcessing>
-    <bytecodeTargetLevel>
-      <module name="Chess" target="1.8" />
-    </bytecodeTargetLevel>
   </component>
 </project>

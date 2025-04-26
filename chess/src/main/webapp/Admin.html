@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>后台管理 - 五子棋</title>
+
+  <script src="https://unpkg.com/vue@3.2.36/dist/vue.global.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+  <script src="https://unpkg.com/element-plus@2.2.9"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <style>
+    body { background: #f5f7fa; }
+    .admin-container { max-width: 1200px; margin: 30px auto; }
+    .section { margin-bottom: 30px; }
+    .section-title { font-size: 20px; margin-bottom: 10px; color: #409EFF; }
+    .msg-box { display: flex; gap: 10px; margin-top: 10px; }
+    .msg-box .el-input { flex: 1; }
+  </style>
+</head>
+<body>
+<div id="app" class="admin-container">
+  <el-card class="section">
+    <div class="section-title">用户列表</div>
+    <el-table
+            :data="users"
+            border
+            style="width: 100%;">
+      <el-table-column prop="userId" label="用户ID" width="100">
+        <template #default="scope">
+          {{ scope.row.userId }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="username" label="用户名" width="150">
+        <template #default="scope">
+          {{ scope.row.username }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="email" label="邮箱">
+        <template #default="scope">
+          {{ scope.row.email }}
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-card>
+
+  <el-card class="section">
+    <div class="section-title">对局列表</div>
+    <el-table
+            :data="games"
+            border
+            style="width: 100%;">
+      <el-table-column prop="gameId" label="对局ID" width="100">
+        <template #default="scope">
+          {{ scope.row.gameId }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="blackPlayerId" label="黑方ID" width="150">
+        <template #default="scope">
+          {{ scope.row.blackPlayerId }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="whitePlayerId" label="白方ID" width="150">
+        <template #default="scope">
+          {{ scope.row.whitePlayerId }}
+        </template>
+      </el-table-column>
+      <el-table-column prop="winnerId" label="胜者ID" width="150">
+        <template #default="scope">
+          {{ scope.row.winnerId }}
+        </template>
+      </el-table-column>
+    </el-table>
+  </el-card>
+
+  <el-card class="section">
+    <div class="section-title">消息中心</div>
+    <div>
+      <el-radio-group v-model="msgType" size="small">
+        <el-radio-button label="broadcast">广播</el-radio-button>
+        <el-radio-button label="single">单发</el-radio-button>
+      </el-radio-group>
+      <el-select v-if="msgType==='single'" v-model="selectedUserId" placeholder="选择用户" size="small" style="width: 200px; margin-left: 10px;">
+        <el-option v-for="u in users" :key="u.userId" :label="u.username+'('+u.userId+')'" :value="u.userId"/>
+      </el-select>
+    </div>
+    <div class="msg-box">
+      <el-input v-model="msgContent" placeholder="输入消息内容" @keyup.enter="sendMsg"/>
+      <el-button type="primary" @click="sendMsg">发送</el-button>
+    </div>
+    <div style="margin-top:10px;"></div>
+    <el-tag v-for="(msg,idx) in msgHistory" :key="idx" style="margin:2px;">
+      {{ msg }}
+    </el-tag>
+</el-card>
+</div>
+<script>
+  const { createApp, ref, onMounted } = Vue;
+
+  createApp({
+    setup() {
+      const users = ref([]);
+      const games = ref([]);
+      const msgType = ref('broadcast');
+      const selectedUserId = ref(null);
+      const msgContent = ref('');
+      const msgHistory = ref([]);
+
+      // 获取用户列表
+      const fetchUsers = async () => {
+        try {
+          const response = await axios.get('/chess_war/user/getEloList');
+          users.value = response.data || [];
+        } catch (error) {
+          console.error('获取用户列表失败:', error);
+        }
+      };
+
+      // 获取对局列表
+      const fetchGames = async () => {
+        try {
+          const response = await axios.get('/chess_war/gameRecord/getAllRecords');
+          games.value = response.data || [];
+        } catch (error) {
+          console.error('获取对局列表失败:', error);
+        }
+      };
+
+      onMounted(() => {
+        fetchUsers();
+        fetchGames();
+      });
+
+      return {
+        users,
+        games,
+        msgType,
+        selectedUserId,
+        msgContent,
+        msgHistory,
+      };
+    }
+  }).use(ElementPlus).mount('#app');
+</script>
+<style>
+  .el-table .warning-row {
+    background: oldlace;
+  }
+
+  .el-table .success-row {
+    background: #f0f9eb;
+  }
+</style>
+</body>
+</html>
