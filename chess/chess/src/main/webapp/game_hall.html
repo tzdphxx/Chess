@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>游戏大厅</title>
+    <!-- 更新Element Plus的CDN引用 -->
+    <link rel="stylesheet" href="//unpkg.com/element-plus/dist/index.css" />
+    <script src="//unpkg.com/vue@3"></script>
+    <script src="//unpkg.com/element-plus"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: url('./picture/background.png') no-repeat center center fixed;
+            background-size: cover;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+            'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        .container {
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .hall-header {
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+
+        .user-card {
+            width: 400px;
+            margin: auto;
+            margin-top: 35vh;  /* 将卡片向下移动到页面35%的位置 */
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .game-buttons {
+            display: flex;
+            gap: 20px;  /* 增加按钮之间的间距 */
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .chess-board {
+            background: #DEB887;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(15, 40px);
+            grid-template-rows: repeat(15, 40px);
+            gap: 1px;
+            background: #000;
+        }
+        .cell {
+            background: #DEB887;
+            width: 40px;
+            height: 40px;
+            position: relative;
+        }
+        .piece {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+        }
+        .black { background: #000; }
+        .white { background: #fff; }
+
+        /* 添加新的简约样式 */
+        .simple-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .simple-table th, .simple-table td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ebeef5;
+        }
+
+        .simple-table th {
+            background-color: #f5f7fa;
+            color: #606266;
+            font-weight: bold;
+        }
+
+        .simple-table tr:hover {
+            background-color: #f5f7fa;
+        }
+
+        .simple-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .simple-tag.win {
+            background-color: #f0f9eb;
+            color: #67c23a;
+        }
+
+        .simple-tag.lose {
+            background-color: #fef0f0;
+            color: #f56c6c;
+        }
+
+        .dialog-content {
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <el-container class="container">
+        <el-header class="hall-header">
+            <el-row :gutter="20" justify="space-between" align="middle">
+                <el-col :span="6">
+                    <el-button type="primary" @click="toggleUserList">天梯榜</el-button>
+                </el-col>
+                <el-col :span="6" style="text-align: right">
+                    <el-button type="primary" @click="toggleHistory">历史战绩</el-button>
+                    <el-button type="success" @click="goToUserPage">个人主页</el-button>
+                </el-col>
+            </el-row>
+        </el-header>
+
+        <!-- 修改el-main部分的按钮布局 -->
+        <el-main>
+            <el-row :gutter="20" justify="center">
+                <el-col :span="8">
+                    <el-card class="user-card">
+                        <template #header>
+                            <div class="card-header">
+                                <h3>{{ username }}</h3>
+                            </div>
+                        </template>
+                        <el-descriptions :column="1" border>
+                            <el-descriptions-item label="等级">{{ level }}</el-descriptions-item>
+                            <el-descriptions-item label="积分">{{ score }}</el-descriptions-item>
+                            <el-descriptions-item label="胜率">{{ winRate }}%</el-descriptions-item>
+                        </el-descriptions>
+                        <div class="game-buttons">
+                            <el-button type="primary" @click="openCreateRoomDialog">创建房间</el-button>
+                            <el-button
+                                    type="success"
+                                    :loading="isMatching"
+                                    @click="startMatch">
+                                {{ isMatching ? '匹配中...' : '快速匹配' }}
+                            </el-button>
+                            <el-button type="primary" @click="openJoinRoomDialog">加入房间</el-button>
+                        </div>
+                    </el-card>
+                </el-col>
+            </el-row>
+        </el-main>
+
+        <!-- 对话框部分保持原有逻辑，只更新样式 -->
+        <!-- 修改天梯榜对话框 -->
+        <el-dialog
+                v-model="showUserList"
+                title="天梯榜"
+                width="600px">
+            <div v-if="userListLoading" class="text-center">
+                <el-loading></el-loading>
+            </div>
+            <div v-else class="dialog-content">
+                <table class="simple-table">
+                    <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>玩家名称</th>
+                        <th>积分</th>
+                        <th>玩家ID</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(user, index) in userList" :key="user.userId">
+                        <td>{{ index + 1 }}</td>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.score }}</td>
+                        <td>{{ user.userId }}</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </el-dialog>
+
+        <!-- 修改历史战绩对话框 -->
+        <el-dialog
+                v-model="showHistory"
+                title="历史战绩"
+                width="600px">
+            <div v-if="historyLoading" class="text-center">
+                <el-loading></el-loading>
+            </div>
+            <div v-else class="dialog-content">
+                <div style="margin-bottom: 20px">
+                    <span style="margin-right: 20px">总局数：{{ gameHistory.length }}</span>
+                    <span style="margin-right: 20px">胜场：{{ gameHistory.filter(g=>g.result==='胜利').length }}</span>
+                    <span>负场：{{ gameHistory.filter(g=>g.result==='失败').length }}</span>
+                </div>
+                <table class="simple-table">
+                    <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>对手</th>
+                        <th>结果</th>
+                        <th>日期</th>
+                        <th>操作</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(game, index) in gameHistory" :key="index">
+                        <td>{{ index + 1 }}</td>
+                        <td>{{ game.opponent }}</td>
+                        <td>
+                                <span :class="['simple-tag', game.result === '胜利' ? 'win' : 'lose']">
+                                    {{ game.result }}
+                                </span>
+                        </td>
+                        <td>{{ new Date(game.date).toLocaleString('zh-CN') }}</td>
+                        <td>
+                            <el-button type="primary" size="small" @click="viewGameDetail(game)">
+                                回放
+                            </el-button>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </el-dialog>
+
+        <el-dialog
+                v-model="showGameDetailModal"
+                title="对局回放"
+                width="700px"
+        >
+            <div v-if="selectedGame" style="text-align: center;">
+                <div class="chess-board">
+                    <div class="board" id="gameDetailBoard"></div>
+                </div>
+                <div style="margin-top: 10px;">
+                    <el-tag :type="selectedGame.result === '胜利' ? 'success' : 'danger'" style="margin: 5px;">
+                        {{ selectedGame.result }}
+                    </el-tag>
+                    <el-tag type="info" style="margin: 5px;">
+                        对手：{{ selectedGame.opponent }}
+                    </el-tag>
+                </div>
+            </div>
+        </el-dialog>
+
+        <el-dialog
+                title="创建房间"
+                v-model="showCreateRoomDialog"
+                width="30%">
+            <el-form :model="createRoomForm">
+                <el-form-item label="房间名称">
+                    <el-input v-model="createRoomForm.roomName" placeholder="请输入房间名称"></el-input>
+                </el-form-item>
+                <el-form-item label="是否公开">
+                    <el-switch v-model="createRoomForm.isPublic"></el-switch>
+                </el-form-item>
+                <el-form-item v-if="!createRoomForm.isPublic" label="加入密码">
+                    <el-input v-model="createRoomForm.password" placeholder="请输入密码"></el-input>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showCreateRoomDialog = false">取消</el-button>
+                <el-button type="primary" @click="createRoom">创建</el-button>
+            </template>
+        </el-dialog>
+
+        <el-dialog
+                title="加入房间"
+                v-model="showJoinRoomDialog"
+                width="30%">
+            <el-form :model="joinRoomForm">
+                <el-form-item label="房间号">
+                    <el-input v-model="joinRoomForm.roomId" placeholder="请输入房间号"></el-input>
+                </el-form-item>
+                <el-form-item label="加入密码">
+                    <el-input v-model="joinRoomForm.password" placeholder="请输入密码"></el-input>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button @click="showJoinRoomDialog = false">取消</el-button>
+                <el-button type="primary" @click="joinRoom">加入</el-button>
+            </template>
+        </el-dialog>
+    </el-container>
+    <!-- 全局聊天频道和在线人数统计 -->
+    <div style="position:fixed;right:30px;bottom:30px;width:350px;z-index:999;">
+        <el-card>
+            <div slot="header" style="display:flex;justify-content:space-between;align-items:center;">
+                <span>全局聊天频道</span>
+                <el-tag type="success" size="small">在线人数: {{ onlineCount }}</el-tag>
+            </div>
+            <div style="height:180px;overflow-y:auto;margin-bottom:10px;" ref="chatScroll">
+                <div v-for="(msg, idx) in hallChatMessages" :key="idx" style="margin:4px 0;">
+                    <b style="color:#409EFF">{{ msg.sender }}</b>：{{ msg.content }}
+                </div>
+            </div>
+            <el-input
+                    v-model="hallChatInput"
+                    placeholder="输入内容回车发送"
+                    size="small"
+                    @keyup.enter.native="sendHallChat"
+            >
+                <template #append>
+                    <el-button @click="sendHallChat" type="primary" size="small">发送</el-button>
+                </template>
+            </el-input>
+        </el-card>
+    </div>
+</div>
+<script>
+    const { createApp, ref, onMounted ,reactive } = Vue;
+
+    createApp({
+        setup() {
+            // 添加joinRoomForm的响应式定义
+            const joinRoomForm = reactive({
+                roomId: '',
+                password: ''
+            });
+
+            // 添加在setup函数开始处
+            const createRoomForm = reactive({
+                roomName: '',
+                isPublic: true,
+                password: ''
+            });
+
+            // 用户信息相关
+            const username = ref('加载中...');
+            const level = ref(0);
+            const score = ref(0);
+            const winRate = ref(0);
+            const userId = ref(null);
+
+            // 游戏状态相关
+            const isMatching = ref(false);
+            const statusMessage = ref('正在加载...');
+            const loading = ref(false);
+
+            // 对话框显示状态
+            const showUserList = ref(false);
+            const showHistory = ref(false);
+            const showGameDetailModal = ref(false);
+            const showCreateRoomDialog = ref(false);
+
+            // 数据列表
+            const onlineUsers = ref([]);
+            const gameHistory = ref([]);
+            const userList = ref([]);  // 修改这里，使用空数组初始化
+
+            // 加载状态
+            const userListLoading = ref(false);
+            const historyLoading = ref(false);
+
+            // 当前选中的游戏
+            const currentGame = ref(null);
+            const selectedGame = ref(null);
+
+            // 全局聊天频道相关
+            const hallChatInput = ref('');
+            const hallChatMessages = ref([]);
+            const onlineCount = ref(0);
+            let hallChatWs = null;
+            const chatScroll = ref(null);
+
+            const fetchUserInfo = async () => {
+                try {
+                    console.log('开始获取用户信息...');
+                    const response = await axios.get('/chess_war/user/getUserInfo');
+                    if (response.data) {
+                        const userData = response.data;
+                        username.value = userData.username;
+                        userId.value = userData.userId;
+                        level.value = userData.level || 1;
+                        score.value = userData.eloScore;
+                        winRate.value = userData.totalWins + userData.totalLosses > 0
+                            ? Math.round((userData.totalWins / (userData.totalWins + userData.totalLosses)) * 100)
+                            : 0;
+                        console.log('用户信息加载成功:', userData);
+                        statusMessage.value = '已连接到服务器';
+                        return true;
+                    }
+                } catch (error) {
+                    console.error('获取用户信息失败:', error);
+                    statusMessage.value = '获取用户信息失败，请重新登录';
+                    window.location.href = '/chess_war/login.html';
+                }
+                return false;
+            };
+
+            const connectWebSocket = async () => {
+                try {
+                    const userInfoLoaded = await fetchUserInfo();
+                    if (!userInfoLoaded) return;
+
+                    if (!userId.value) {
+                        console.error("未能获取到 userId");
+                        statusMessage.value = '无法连接匹配服务器，缺少用户信息';
+                        window.location.href = '/chess_war/login.html';
+                        return;
+                    }
+
+                    const wsUrl = `ws://${window.location.host}/chess_war/match/${userId.value}`;
+                    console.log('正在连接WebSocket:', wsUrl);
+
+                    ws = new WebSocket(wsUrl);
+
+                    ws.onopen = () => {
+                        console.log('WebSocket 连接已建立');
+                        statusMessage.value = '已连接到匹配服务器';
+                    };
+
+                    ws.onmessage = (event) => {
+                        console.log('收到消息:', event.data);
+                        const message = JSON.parse(event.data);
+                        if (message.type === 'MATCH_SUCCESS') {
+                            window.location.href = `/chess_war/game_room.html?roomId=${message.roomId}&userId=${userId.value}&username=${username.value}`;
+                        }
+                    };
+
+                    ws.onerror = (error) => {
+                        console.error('WebSocket 错误:', error);
+                        statusMessage.value = 'WebSocket 连接错误';
+                    };
+
+                    ws.onclose = (event) => {
+                        console.log('WebSocket 连接已关闭:', event);
+                        statusMessage.value = '与匹配服务器断开连接';
+                    };
+                } catch (error) {
+                    console.error('连接WebSocket失败:', error);
+                    window.location.href = '/chess_war/login.html';
+                }
+            };
+
+            // 全局聊天频道WebSocket连接
+            const connectHallChat = () => {
+                const wsUrl = `ws://${window.location.host}/chess_war/hallChat`;
+                hallChatWs = new WebSocket(wsUrl);
+
+                hallChatWs.onopen = () => {
+                    // 可选：发送上线通知
+                };
+                hallChatWs.onmessage = (event) => {
+                    let msg;
+                    try {
+                        msg = JSON.parse(event.data);
+                    } catch {
+                        return;
+                    }
+                    if (msg.type === 'CHAT') {
+                        hallChatMessages.value.push({
+                            sender: msg.sender,
+                            content: msg.content
+                        });
+                        // 滚动到底部
+                        setTimeout(() => {
+                            if (chatScroll.value) chatScroll.value.scrollTop = chatScroll.value.scrollHeight;
+                        }, 0);
+                    } else if (msg.type === 'ONLINE_COUNT') {
+                        onlineCount.value = msg.count;
+                    }
+                };
+                hallChatWs.onclose = () => {};
+                hallChatWs.onerror = () => {};
+            };
+
+            const sendHallChat = () => {
+                if (!hallChatInput.value.trim() || !hallChatWs || hallChatWs.readyState !== 1) return;
+                hallChatWs.send(JSON.stringify({
+                    type: 'CHAT',
+                    sender: username.value,
+                    content: hallChatInput.value.trim()
+                }));
+                hallChatInput.value = '';
+            };
+
+            const toggleMatch = async () => {
+                loading.value = true;
+                try {
+                    if (isMatching.value) {
+                        const response = await axios.post('/chess_war/gameHall/cancelMatch');
+                        if (response.data.success) {
+                            isMatching.value = false;
+                            statusMessage.value = '已取消匹配';
+                        } else {
+                            statusMessage.value = response.data.message;
+                        }
+                    } else {
+                        const response = await axios.post('/chess_war/gameHall/startMatch');
+                        if (response.data.success) {
+                            isMatching.value = true;
+                            statusMessage.value = '正在匹配中...';
+                        } else {
+                            statusMessage.value = response.data.message;
+                        }
+                    }
+                } catch (error) {
+                    statusMessage.value = '操作失败，请重试';
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const fetchGameHistory = async () => {
+                historyLoading.value = true;
+                try {
+                    if (!userId.value) {
+                        console.error('未获取到用户ID');
+                        return;
+                    }
+
+                    console.log('开始获取历史战绩，用户ID:', userId.value);
+                    const response = await axios.get('/chess_war/gameRecord/getGameRecordByUserId', {
+                        params: { userId: userId.value }
+                    });
+
+                    console.log('服务器返回的历史战绩数据:', response.data);
+
+                    if (response.data && Array.isArray(response.data)) {
+                        const processedHistory = response.data.map(record => {
+                            const recordUserId = parseInt(userId.value);
+                            const recordWhiteId = parseInt(record.whitePlayerId);
+                            const recordBlackId = parseInt(record.blackPlayerId);
+                            const recordWinnerId = parseInt(record.winnerId);
+                            const opponentId = recordWhiteId === recordUserId ? recordBlackId : recordWhiteId;
+
+                            const mappedRecord = {
+                                gameId: record.gameId || record.id,
+                                opponent: record.opponentUsername || `玩家${opponentId}`,
+                                result: recordWinnerId === recordUserId ? '胜利' : '失败',
+                                date: record.startTime,
+                                moveHistory: record.moveHistory,
+                                whitePlayerId: recordWhiteId,
+                                blackPlayerId: recordBlackId,
+                                winnerId: recordWinnerId
+                            };
+                            // 添加详细日志，检查每个记录的 gameId 和 opponent
+                            console.log(`处理记录: ID=${record.id}, GameID=${record.gameId}, OpponentUsername=${record.opponentUsername} => Mapped: gameId=${mappedRecord.gameId}, opponent=${mappedRecord.opponent}`);
+                            return mappedRecord;
+                        });
+                        console.log('最终处理后的历史战绩数据:', processedHistory);
+                        gameHistory.value = processedHistory;
+                    } else {
+                        console.error('获取到的历史战绩数据格式不正确或为空:', response.data);
+                        gameHistory.value = [];
+                    }
+                } catch (error) {
+                    console.error('获取历史战绩失败:', error);
+                    gameHistory.value = [];
+                } finally {
+                    historyLoading.value = false;
+                }
+            };
+
+            const formatDate = (timestamp) => {
+                if (!timestamp) return '';
+                const date = new Date(timestamp);
+                return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            };
+
+            const formatDuration = (seconds) => {
+                const minutes = Math.floor(seconds / 60);
+                const remainingSeconds = seconds % 60;
+                return `${minutes}分${remainingSeconds}秒`;
+            };
+
+            const showGameDetail = (record) => {
+                currentGame.value = record;
+                showGameDetailModal.value = true;
+
+                setTimeout(() => {
+                    renderGameBoard(record);
+                }, 0);
+            };
+
+            const closeGameDetail = () => {
+                showGameDetailModal.value = false;
+                currentGame.value = null;
+            };
+
+            const renderGameBoard = (record) => {
+                const board = document.getElementById('gameDetailBoard');
+                if (!board) {
+                    console.error('找不到棋盘元素');
+                    return;
+                }
+
+                board.innerHTML = '';
+
+                // 创建棋盘格子
+                for (let y = 0; y < 15; y++) {
+                    for (let x = 0; x < 15; x++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.x = x;
+                        cell.dataset.y = y;
+                        board.appendChild(cell);
+                    }
+                }
+
+                // 解析并放置棋子及序号
+                if (record.moveHistory) {
+                    try {
+                        let moves;
+                        if (typeof record.moveHistory === 'string') {
+                            moves = JSON.parse(record.moveHistory);
+                        } else {
+                            moves = record.moveHistory;
+                        }
+
+                        if (!Array.isArray(moves)) {
+                            console.error('moves不是数组类型');
+                            return;
+                        }
+
+                        moves.forEach((move, index) => {
+                            const cell = board.querySelector(`.cell[data-x="${move.x}"][data-y="${move.y}"]`);
+                            if (cell) {
+                                const piece = document.createElement('div');
+                                piece.className = `piece ${index % 2 === 0 ? 'black' : 'white'}`;
+
+                                // 创建并添加序号元素
+                                const moveNumberSpan = document.createElement('span');
+                                moveNumberSpan.className = 'move-number';
+                                moveNumberSpan.textContent = index + 1; // 序号从1开始
+                                piece.appendChild(moveNumberSpan);
+
+                                cell.appendChild(piece);
+                            }
+                        });
+                    } catch (error) {
+                        console.error('解析或渲染棋局历史失败:', error);
+                    }
+                }
+            };
+
+            const toggleUserList = async () => {
+                showUserList.value = !showUserList.value;
+                if (showUserList.value) {
+                    await fetchUserList();
+                }
+            };
+
+            const fetchUserList = async () => {
+                try {
+                    userListLoading.value = true;
+                    console.log('开始获取天梯榜数据...');
+                    const response = await axios.get('/chess_war/user/getEloList');
+                    console.log('服务器返回的数据:', response.data);
+
+                    if (response.data && Array.isArray(response.data)) {
+                        const processedData = response.data.map(user => ({
+                            username: user.username || `玩家${user.userId}`,
+                            score: user.eloScore || 0,
+                            userId: user.userId
+                        }));
+                        console.log('处理后的用户列表:', processedData);
+                        userList.value = processedData;  // 直接赋值给ref
+                    } else {
+                        console.error('数据格式不正确:', response.data);
+                        userList.value = [];
+                    }
+                } catch (error) {
+                    console.error('获取天梯榜失败:', error);
+                    alert('获取天梯榜失败，请稍后再试。');
+                } finally {
+                    userListLoading.value = false;
+                }
+            };
+
+            const toggleHistory = async () => {
+                showHistory.value = !showHistory.value;
+                if (showHistory.value) {
+                    console.log('开始获取历史战绩...');
+                    await fetchGameHistory();
+                    console.log('历史战绩数据:', gameHistory.value);
+                }
+            };
+
+            const startMatch = async () => {
+                if (isMatching.value) {
+                    return;
+                }
+
+                loading.value = true;
+                try {
+                    console.log('开始匹配...');
+                    const response = await axios.post('/chess_war/gameHall/startMatch');
+                    if (response.data.success) {
+                        isMatching.value = true;
+                        statusMessage.value = '正在匹配中...';
+                    } else {
+                        statusMessage.value = response.data.message || '匹配失败，请重试';
+                    }
+                } catch (error) {
+                    console.error('匹配请求失败:', error);
+                    statusMessage.value = '操作失败，请重试';
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const cancelMatch = async () => {
+                if (!isMatching.value) {
+                    return;
+                }
+
+                try {
+                    console.log('取消匹配...');
+                    const response = await axios.post('/chess_war/gameHall/cancelMatch');
+                    if (response.data.success) {
+                        isMatching.value = false;
+                        statusMessage.value = '已取消匹配';
+                    } else {
+                        statusMessage.value = response.data.message || '取消匹配失败';
+                    }
+                } catch (error) {
+                    console.error('取消匹配请求失败:', error);
+                    statusMessage.value = '操作失败，请重试';
+                }
+            };
+
+            const invitePlayer = (player) => {
+                // 实现邀请逻辑
+            };
+
+            const viewGameDetail = (game) => {
+                selectedGame.value = game;
+                showGameDetailModal.value = true;
+                // 延迟渲染棋盘，确保DOM已更新
+                setTimeout(() => {
+                    renderGameBoard(game);
+                }, 100);
+            };
+
+            const handleClose = (done) => {
+                done();
+            };
+
+            const openCreateRoomDialog = ()=>{
+
+                showCreateRoomDialog.value = true;
+            }
+
+            const createRoom = async () => {
+                try {
+                    const response = await axios.post('/chess_war/gameRoom/create', {
+                        roomName: createRoomForm.roomName,
+                        isPublic: createRoomForm.isPublic,
+                        password: createRoomForm.isPublic ? null : createRoomForm.password,
+                        userId: userId.value
+                    });
+
+                    if (response.data.success) {
+                        alert('房间创建成功！');
+                        showCreateRoomDialog.value = false;
+                        window.location.href = `/chess_war/game_room.html?roomId=${response.data.roomId}&userId=${userId.value}&username=${username.value}`;
+                    } else {
+                        alert(response.data.message || '创建房间失败');
+                    }
+                } catch (error) {
+                    console.error('创建房间失败:', error);
+                    alert(error.response?.data?.message || '创建房间请求失败，请稍后再试');
+                }
+            }
+
+            const openJoinRoomDialog = () =>{
+
+                showJoinRoomDialog.value = true;
+            }
+            const showJoinRoomDialog = ref(false);  // 添加状态变量
+
+            // 添加关闭对话框的方法
+            const closeJoinRoomDialog = () => {
+                showJoinRoomDialog.value = false;
+            }
+
+            const joinRoom = async () => {
+                try {
+                    // 创建URLSearchParams对象来构建查询参数
+                    const params = new URLSearchParams();
+                    params.append('roomId', joinRoomForm.roomId);
+                    params.append('password', joinRoomForm.password);
+                    params.append('userId', userId.value);
+
+                    const response = await axios.post('/chess_war/gameRoom/joinRoom', params, {
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        }
+                    });
+
+                    if (response.data.success) {
+                        showJoinRoomDialog.value = false;
+                        // 确保roomId使用的是表单中的值
+                        window.location.href = `/chess_war/game_room.html?roomId=${joinRoomForm.roomId}&userId=${userId.value}&username=${username.value}`;
+                    } else {
+                        alert(response.data.message || '加入房间失败');
+                    }
+                } catch (error) {
+                    console.error('加入房间失败:', error);
+                    alert('加入房间请求失败，请稍后再试');
+                }
+            }
+
+            onMounted(async () => {
+                console.log('页面加载完成，开始初始化...');
+                await connectWebSocket();
+                connectHallChat();
+            });
+
+            const goToUserPage = () => {
+                window.location.href = '/chess_war/User.html';
+            };
+
+            return {
+                // 用户信息
+                username,
+                level,
+                score,
+                winRate,
+
+                // 游戏状态
+                isMatching,
+                statusMessage,
+                loading,
+
+                // 对话框状态
+                showUserList,
+                showHistory,
+                showGameDetailModal,
+                showCreateRoomDialog,
+                showJoinRoomDialog, // 确保返回
+
+                // 数据列表
+                onlineUsers,
+                gameHistory,
+                userList,
+
+                // 加载状态
+                userListLoading,
+                historyLoading,
+
+                // 当前游戏
+                currentGame,
+                selectedGame,
+
+                // 方法
+                toggleHistory,
+                startMatch,
+                cancelMatch,
+                formatDate,
+                formatDuration,
+                closeGameDetail,
+                toggleUserList,
+                fetchGameHistory,
+                invitePlayer,
+                viewGameDetail,
+                openCreateRoomDialog,
+                createRoom,
+                openJoinRoomDialog,
+                joinRoom,
+
+                closeJoinRoomDialog,
+
+                createRoomForm,
+                joinRoomForm,
+
+                // 全局聊天频道
+                hallChatInput,
+                hallChatMessages,
+                sendHallChat,
+                onlineCount,
+                chatScroll,
+                goToUserPage,
+            };
+        }
+    }).use(ElementPlus).mount('#app');
+
+</script>
+</body>
+</html>
